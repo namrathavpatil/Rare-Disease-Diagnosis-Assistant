@@ -55,3 +55,4 @@ Open http://localhost:8000
 ## Team
 
 **Namratha Patil** — USC
+**Fardeen Khan** — USC
