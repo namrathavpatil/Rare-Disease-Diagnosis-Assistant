@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RDDA - Rare Disease Diagnosis Assistant</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #334155;
+            padding: 20px 40px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .header h1 { font-size: 1.5rem; font-weight: 700; color: #f8fafc; }
+        .header h1 span { color: #d4a574; }
+        .header-sub { font-size: 0.8rem; color: #94a3b8; margin-top: 2px; }
+        .header-badges { display: flex; gap: 8px; }
+        .badge { padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
+        .badge-claude { background: #d4a57422; color: #d4a574; border: 1px solid #d4a57444; }
+        .badge-live { background: #22c55e22; color: #4ade80; border: 1px solid #22c55e44; }
+
+        /* Layout */
+        .app { display: flex; height: calc(100vh - 73px); }
+        .sidebar { width: 380px; border-right: 1px solid #334155; display: flex; flex-direction: column; background: #1e293b; position: relative; z-index: 20; }
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 1; }
+
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 1px solid #334155; }
+        .tab { flex: 1; padding: 12px; text-align: center; font-size: 0.85rem; font-weight: 600;
+            background: transparent; color: #94a3b8; border: none; cursor: pointer; transition: all 0.2s;
+            border-bottom: 2px solid transparent; }
+        .tab:hover { color: #e2e8f0; background: #ffffff08; }
+        .tab.active { color: #d4a574; border-bottom-color: #d4a574; }
+
+        /* Query Input */
+        .input-area { padding: 16px; border-bottom: 1px solid #334155; }
+        .input-area label { display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+        textarea, input[type="text"] { width: 100%; padding: 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+            color: #e2e8f0; font-size: 0.9rem; font-family: inherit; resize: none; outline: none; transition: border-color 0.2s; }
+        textarea:focus, input[type="text"]:focus { border-color: #d4a574; }
+        textarea { height: 80px; }
+        .btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; margin-top: 10px; }
+        .btn-primary { background: linear-gradient(135deg, #d4a574, #c2956a); color: #0f172a; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px #d4a57444; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: #334155; color: #e2e8f0; margin-top: 8px; }
+        .btn-secondary:hover { background: #475569; }
+        .disease-input { margin-top: 10px; }
+        .disease-input input { margin-top: 4px; }
+
+        /* Results */
+        .results-area { flex: 1; overflow-y: auto; padding: 16px; }
+        .result-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+        .result-card h3 { font-size: 0.85rem; color: #d4a574; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .answer-text { font-size: 0.9rem; line-height: 1.7; color: #cbd5e1; white-space: pre-wrap; }
+        .answer-text h2, .answer-text h3 { color: #f8fafc; font-size: 1rem; margin: 12px 0 6px; }
+
+        /* Confidence Bar */
+        .confidence-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+        .conf-track { flex: 1; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; }
+        .conf-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+        .conf-high { background: #4ade80; }
+        .conf-med { background: #fbbf24; }
+        .conf-low { background: #f87171; }
+        .conf-label { font-size: 0.8rem; font-weight: 600; min-width: 40px; }
+
+        /* Entity Pills */
+        .entity-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+        .pill { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .pill-disease { background: #ef444422; color: #fca5a5; border: 1px solid #ef444444; }
+        .pill-drug { background: #3b82f622; color: #93c5fd; border: 1px solid #3b82f644; }
+        .pill-symptom { background: #f59e0b22; color: #fcd34d; border: 1px solid #f59e0b44; }
+        .pill-phenotype { background: #8b5cf622; color: #c4b5fd; border: 1px solid #8b5cf644; }
+        .pill-adverse_event { background: #f4364c22; color: #fda4af; border: 1px solid #f4364c44; }
+
+        /* Relationships */
+        .rel-item { display: flex; align-items: center; gap: 6px; padding: 6px 0; font-size: 0.8rem; border-bottom: 1px solid #1e293b; }
+        .rel-arrow { color: #d4a574; font-weight: bold; }
+        .rel-type { color: #94a3b8; font-size: 0.7rem; background: #334155; padding: 2px 8px; border-radius: 10px; }
+
+        /* Sources */
+        .source-item { padding: 8px 12px; background: #0f172a; border-radius: 6px; margin-bottom: 6px; font-size: 0.8rem; }
+        .source-label { font-weight: 600; color: #d4a574; font-size: 0.7rem; text-transform: uppercase; }
+
+        /* Graph Canvas */
+        .graph-panel { flex: 1; position: relative; background: #0f172a; overflow: hidden; }
+        #graph-canvas { width: 100%; height: 100%; display: block; }
+        .graph-legend { position: absolute; bottom: 16px; left: 16px; background: #1e293bdd; backdrop-filter: blur(8px);
+            border: 1px solid #334155; border-radius: 8px; padding: 12px; font-size: 0.7rem; }
+        .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .graph-stats-overlay { position: absolute; top: 16px; right: 16px; background: #1e293bdd; backdrop-filter: blur(8px);
+            border: 1px solid #334155; border-radius: 8px; padding: 12px; font-size: 0.8rem; z-index: 10; }
+        .stat-row { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 4px; }
+        .stat-val { font-weight: 700; color: #d4a574; }
+
+        /* Follow-up */
+        .followup-box { background: #d4a57411; border: 1px solid #d4a57433; border-radius: 8px; padding: 12px; margin-top: 8px; font-size: 0.85rem; color: #d4a574; }
+
+        /* Loading */
+        .loading { display: flex; align-items: center; gap: 8px; color: #94a3b8; font-size: 0.85rem; padding: 20px; }
+        .spinner { width: 18px; height: 18px; border: 2px solid #334155; border-top-color: #d4a574; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Tab content */
+        .tab-panel { display: none; flex-direction: column; height: 100%; }
+        .tab-panel.active { display: flex; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>Rare Disease <span>Diagnosis Assistant</span></h1>
+            <div class="header-sub">RAG + Knowledge Graph + PubMed + Orphanet + FDA</div>
+        </div>
+        <div class="header-badges">
+            <span class="badge badge-claude">Powered by Claude</span>
+            <span class="badge badge-live" id="status-badge">Connecting...</span>
+        </div>
+    </div>
+
+    <div class="app">
+        <!-- Sidebar: Input & Results -->
+        <div class="sidebar">
+            <div class="tabs">
+                <button class="tab active" id="tab-ask" onclick="switchTab('ask')">Ask</button>
+                <button class="tab" id="tab-build" onclick="switchTab('build')">Build Graph</button>
+            </div>
+
+            <!-- ASK Tab -->
+            <div id="ask-panel" class="tab-panel active">
+                <div class="input-area">
+                    <label>Ask a medical question</label>
+                    <textarea id="question" placeholder="e.g. What are the symptoms and treatment options for Marfan syndrome?"></textarea>
+                    <button class="btn btn-primary" id="ask-btn" onclick="askQuestion()">Ask Claude</button>
+                </div>
+                <div class="results-area" id="ask-results">
+                    <div style="padding:20px; text-align:center; color:#475569;">
+                        <p style="font-size:2rem; margin-bottom:8px;">&#x1F3E5;</p>
+                        <p>Ask any medical question about rare diseases.</p>
+                        <p style="font-size:0.8rem; margin-top:4px;">Claude will retrieve evidence from PubMed, Orphanet, and FDA.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BUILD Tab -->
+            <div id="build-panel" class="tab-panel">
+                <div class="input-area">
+                    <label>Build Knowledge Graph</label>
+                    <input type="text" id="build-disease" placeholder="e.g. Marfan syndrome">
+                    <button class="btn btn-primary" id="build-btn" onclick="buildGraph()">Build from All Sources</button>
+                    <button class="btn btn-secondary" id="build-rag-btn" onclick="buildRAG()">Build RAG Index</button>
+                </div>
+                <div class="results-area" id="build-results">
+                    <div style="padding:20px; text-align:center; color:#475569;">
+                        <p style="font-size:2rem; margin-bottom:8px;">&#x1F9E9;</p>
+                        <p>Enter a disease name to build a knowledge graph from PubMed, Orphanet, and FDA data.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main: Graph Visualization -->
+        <div class="main">
+            <div class="graph-panel">
+                <canvas id="graph-canvas"></canvas>
+                <div class="graph-legend" id="graph-legend" style="display:none;">
+                    <div class="legend-item"><div class="legend-dot" style="background:#ef4444;"></div> Disease</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#3b82f6;"></div> Drug</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#f59e0b;"></div> Symptom</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;"></div> Phenotype</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#ec4899;"></div> Adverse Event</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#6b7280;"></div> Other</div>
+                </div>
+                <div class="graph-stats-overlay" id="graph-stats-overlay">
+                    <div class="stat-row"><span>Nodes</span><span class="stat-val" id="stat-nodes">0</span></div>
+                    <div class="stat-row"><span>Edges</span><span class="stat-val" id="stat-edges">0</span></div>
+                    <div class="stat-row"><span>Sources</span><span class="stat-val">PubMed / Orphanet / FDA</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ========== STATE ==========
+    let graphNodes = [];
+    let graphEdges = [];
+    let simulation = { nodes: [], running: false };
+    let canvas, ctx;
+    let dragNode = null;
+    let mouse = { x: 0, y: 0 };
+    let hoveredNode = null;
+    let time = 0;
+
+    // Highlight state — set when a question is asked
+    let highlightedNodeIds = new Set();
+    let highlightedEdges = new Set(); // indices
+    let particles = []; // flowing particles along edges
+    let pulsePhase = 0;
+    let isQuerying = false; // true while waiting for answer
+
+    // ========== INIT ==========
+    window.onload = async () => {
+        canvas = document.getElementById('graph-canvas');
+        ctx = canvas.getContext('2d');
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        canvas.addEventListener('mousemove', onMouseMove);
+        canvas.addEventListener('mousedown', onMouseDown);
+        canvas.addEventListener('mouseup', onMouseUp);
+        animate();
+        await checkHealth();
+        await loadGraph();
+    };
+
+    function resizeCanvas() {
+        canvas.width = canvas.parentElement.clientWidth;
+        canvas.height = canvas.parentElement.clientHeight;
+    }
+
+    async function checkHealth() {
+        try {
+            const res = await fetch('/health');
+            const data = await res.json();
+            const badge = document.getElementById('status-badge');
+            badge.textContent = 'Live';
+            badge.style.color = '#4ade80';
+        } catch { document.getElementById('status-badge').textContent = 'Offline'; }
+    }
+
+    // ========== TABS ==========
+    function switchTab(name) {
+        document.getElementById('tab-ask').classList.remove('active');
+        document.getElementById('tab-build').classList.remove('active');
+        document.getElementById('ask-panel').classList.remove('active');
+        document.getElementById('build-panel').classList.remove('active');
+        document.getElementById('tab-' + name).classList.add('active');
+        document.getElementById(name + '-panel').classList.add('active');
+    }
+
+    // ========== HIGHLIGHT GRAPH FROM QUERY ==========
+    function highlightEntitiesOnGraph(entities) {
+        highlightedNodeIds.clear();
+        highlightedEdges.clear();
+        particles = [];
+
+        const names = entities.map(e => e.text.toLowerCase());
+        const nodes = simulation.nodes;
+
+        // Find matching nodes
+        for (const n of nodes) {
+            const nodeName = (n.name || n.id).toLowerCase();
+            for (const name of names) {
+                if (nodeName.includes(name) || name.includes(nodeName)) {
+                    highlightedNodeIds.add(n.id);
+                    break;
+                }
+            }
+        }
+
+        // Find edges connecting highlighted nodes, and edges 1-hop away
+        graphEdges.forEach((e, idx) => {
+            const srcHit = highlightedNodeIds.has(e.source);
+            const tgtHit = highlightedNodeIds.has(e.target);
+            if (srcHit || tgtHit) {
+                highlightedEdges.add(idx);
+                // Also highlight the other end (1-hop)
+                if (srcHit) highlightedNodeIds.add(e.target);
+                if (tgtHit) highlightedNodeIds.add(e.source);
+            }
+        });
+
+        // Spawn particles on highlighted edges
+        spawnParticles();
+    }
+
+    function spawnParticles() {
+        particles = [];
+        for (const idx of highlightedEdges) {
+            const e = graphEdges[idx];
+            // 3 particles per edge, staggered
+            for (let i = 0; i < 3; i++) {
+                particles.push({
+                    edgeIdx: idx,
+                    source: e.source,
+                    target: e.target,
+                    t: i / 3, // position along edge 0..1
+                    speed: 0.003 + Math.random() * 0.004,
+                    size: 2 + Math.random() * 2
+                });
+            }
+        }
+    }
+
+    function clearHighlights() {
+        highlightedNodeIds.clear();
+        highlightedEdges.clear();
+        particles = [];
+    }
+
+    // ========== ASK ==========
+    async function askQuestion() {
+        const q = document.getElementById('question').value.trim();
+        if (!q) return;
+        const btn = document.getElementById('ask-btn');
+        btn.disabled = true; btn.textContent = 'Thinking...';
+        document.getElementById('ask-results').innerHTML = '<div class="loading"><div class="spinner"></div>Claude is analyzing your question...</div>';
+
+        // Start "scanning" animation on graph
+        isQuerying = true;
+        clearHighlights();
+
+        try {
+            // Fire entity extraction first (for graph highlight)
+            let entities = [], relationships = [];
+            try {
+                const entRes = await fetch('/extract-entities-llm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: q })
+                });
+                const entData = await entRes.json();
+                entities = entData.entities || [];
+                relationships = entData.relationships || [];
+                // Highlight on graph immediately
+                highlightEntitiesOnGraph(entities);
+            } catch {}
+
+            const res = await fetch('/rag-ready/simple-query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: q, disease: extractDisease(q), max_results: 3 })
+            });
+            const data = await res.json();
+
+            isQuerying = false;
+            renderAnswer(data, entities, relationships);
+        } catch (err) {
+            isQuerying = false;
+            document.getElementById('ask-results').innerHTML = `<div class="result-card"><h3>Error</h3><p>${err.message}</p></div>`;
+        }
+        btn.disabled = false; btn.textContent = 'Ask Claude';
+    }
+
+    function extractDisease(query) {
+        const patterns = [/(?:symptoms?|treatment|cause|diagnos)\w*\s+(?:of|for)\s+(.+?)[\?\.]/i, /(?:what is|tell me about|explain)\s+(.+?)[\?\.]/i];
+        for (const p of patterns) { const m = query.match(p); if (m) return m[1].trim(); }
+        return query.split(' ').slice(0, 4).join(' ');
+    }
+
+    function renderAnswer(data, entities, relationships) {
+        const confPct = ((data.confidence || 0) * 100).toFixed(0);
+        const confClass = confPct >= 70 ? 'conf-high' : confPct >= 40 ? 'conf-med' : 'conf-low';
+
+        let html = '';
+
+        // Confidence
+        html += `<div class="result-card">
+            <h3>Confidence</h3>
+            <div class="confidence-bar">
+                <div class="conf-track"><div class="conf-fill ${confClass}" style="width:${confPct}%"></div></div>
+                <span class="conf-label">${confPct}%</span>
+            </div>
+            <div style="margin-top:6px;font-size:0.75rem;color:#94a3b8;">${data.context_sources || 0} sources used</div>
+        </div>`;
+
+        // Entities (clickable to highlight on graph)
+        if (entities.length > 0) {
+            html += `<div class="result-card"><h3>Entities Extracted</h3><div class="entity-pills">`;
+            for (const e of entities) {
+                html += `<span class="pill pill-${e.type}" style="cursor:pointer" onclick="focusNodeByName('${e.text.replace(/'/g, "\\'")}')">${e.text}</span>`;
+            }
+            html += `</div></div>`;
+        }
+
+        // Answer
+        html += `<div class="result-card">
+            <h3>Answer</h3>
+            <div class="answer-text">${formatMarkdown(data.answer || 'No answer generated.')}</div>
+        </div>`;
+
+        // Follow-up
+        if (data.follow_up_question) {
+            html += `<div class="followup-box">Follow-up: ${data.follow_up_question}</div>`;
+        }
+
+        // Sources & Citations — always show all 3 sources
+        const diseaseName = data.disease || data.query || 'rare disease';
+        const context = data.context || [];
+
+        // Extract best metadata from context for each source
+        let pubmedTitle = '', pubmedPmid = '', orphanetName = '', orphaCode = '', fdaDrug = '';
+        for (const c of context) {
+            const src = (c.source || '').toLowerCase();
+            const meta = c.metadata || {};
+            if (src === 'pubmed' && !pubmedPmid) {
+                pubmedTitle = meta.title || '';
+                pubmedPmid = meta.pmid || '';
+            } else if (src === 'orphanet' && !orphaCode) {
+                orphanetName = meta.title || meta.name || meta.disease_name || '';
+                orphaCode = meta.orpha_code || meta.disease_id || '';
+            } else if (src === 'fda' && !fdaDrug) {
+                fdaDrug = meta.drug_name || '';
+            }
+        }
+
+        const citations = [
+            {
+                icon: 'PUBMED',
+                title: pubmedTitle || diseaseName + ' — PubMed Medical Literature',
+                link: pubmedPmid
+                    ? 'https://pubmed.ncbi.nlm.nih.gov/' + pubmedPmid
+                    : 'https://pubmed.ncbi.nlm.nih.gov/?term=' + encodeURIComponent(diseaseName),
+                api: 'POST /search/diseases  →  {"disease_name": "' + diseaseName + '"}'
+            },
+            {
+                icon: 'ORPHANET',
+                title: orphanetName || diseaseName + ' — Orphanet Rare Disease Database',
+                link: orphaCode
+                    ? 'https://www.orpha.net/en/disease/detail/' + orphaCode
+                    : 'https://www.orpha.net/en/disease/search?query=' + encodeURIComponent(diseaseName),
+                api: 'POST /search/diseases  →  {"disease_name": "' + diseaseName + '"}'
+            },
+            {
+                icon: 'FDA',
+                title: fdaDrug ? fdaDrug + ' — FDA Drug Label' : diseaseName + ' — FDA Drug Safety',
+                link: fdaDrug
+                    ? 'https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=BasicSearch.process&owner=FDA&applType=ALL&searchTerm=' + encodeURIComponent(fdaDrug)
+                    : 'https://open.fda.gov/apis/drug/label/explore/?query=' + encodeURIComponent(diseaseName),
+                api: 'POST /search/drugs  →  {"drug_name": "' + (fdaDrug || diseaseName) + '"}'
+            }
+        ];
+
+        html += `<div class="result-card"><h3>Sources & Citations</h3>`;
+        for (const cite of citations) {
+            const shortLink = cite.link.length > 60 ? cite.link.substring(0, 60) + '...' : cite.link;
+            html += `<div class="source-item">
+                <div class="source-label">${cite.icon}</div>
+                <div style="margin-top:2px;">${cite.title.length > 90 ? cite.title.substring(0,90) + '...' : cite.title}</div>
+                <a href="${cite.link}" target="_blank" rel="noopener" style="color:#d4a574;font-size:0.75rem;text-decoration:none;">${shortLink} &nearr;</a>
+                <div style="margin-top:3px;font-size:0.7rem;color:#64748b;font-family:monospace;">${cite.api}</div>
+            </div>`;
+        }
+        html += `</div>`;
+
+        // Relationships at the end
+        if (relationships.length > 0) {
+            html += `<div class="result-card"><h3>Relationships</h3>`;
+            for (const r of relationships) {
+                html += `<div class="rel-item"><span>${r.source}</span><span class="rel-arrow">&rarr;</span><span class="rel-type">${r.type}</span><span class="rel-arrow">&rarr;</span><span>${r.target}</span></div>`;
+            }
+            html += `</div>`;
+        }
+
+        document.getElementById('ask-results').innerHTML = html;
+    }
+
+    function focusNodeByName(name) {
+        const n = simulation.nodes.find(nd => (nd.name || nd.id).toLowerCase().includes(name.toLowerCase()));
+        if (n) {
+            hoveredNode = n;
+            // Center view on node (nudge it)
+            highlightedNodeIds.clear();
+            highlightedEdges.clear();
+            highlightedNodeIds.add(n.id);
+            graphEdges.forEach((e, idx) => {
+                if (e.source === n.id || e.target === n.id) {
+                    highlightedEdges.add(idx);
+                    highlightedNodeIds.add(e.source);
+                    highlightedNodeIds.add(e.target);
+                }
+            });
+            spawnParticles();
+        }
+    }
+
+    function formatMarkdown(text) {
+        return text
+            .replace(/## (.+)/g, '<h2>$1</h2>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
+    }
+
+    // ========== BUILD GRAPH ==========
+    async function buildGraph() {
+        const disease = document.getElementById('build-disease').value.trim();
+        if (!disease) return;
+        const btn = document.getElementById('build-btn');
+        btn.disabled = true; btn.textContent = 'Building...';
+        document.getElementById('build-results').innerHTML = '<div class="loading"><div class="spinner"></div>Fetching from PubMed, Orphanet, FDA & building graph with Claude...</div>';
+
+        try {
+            const res = await fetch('/knowledge-graph/from-collectors', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ disease_name: disease, max_results: 3 })
+            });
+            const data = await res.json();
+
+            if (data.detail) throw new Error(data.detail);
+
+            const summary = data.collector_summary || {};
+            document.getElementById('build-results').innerHTML = `
+                <div class="result-card">
+                    <h3>Graph Built Successfully</h3>
+                    <div class="stat-row"><span>PubMed Articles</span><span class="stat-val">${summary.pubmed_articles || 0}</span></div>
+                    <div class="stat-row"><span>Orphanet Diseases</span><span class="stat-val">${summary.orphanet_diseases || 0}</span></div>
+                    <div class="stat-row"><span>FDA Drugs</span><span class="stat-val">${summary.fda_drugs || 0}</span></div>
+                    <hr style="border-color:#334155;margin:10px 0;">
+                    <div class="stat-row"><span>Total Nodes</span><span class="stat-val">${summary.graph_nodes || 0}</span></div>
+                    <div class="stat-row"><span>Total Edges</span><span class="stat-val">${summary.graph_edges || 0}</span></div>
+                </div>`;
+
+            await loadGraph();
+        } catch (err) {
+            document.getElementById('build-results').innerHTML = `<div class="result-card"><h3>Error</h3><p>${err.message}</p></div>`;
+        }
+        btn.disabled = false; btn.textContent = 'Build from All Sources';
+    }
+
+    async function buildRAG() {
+        const disease = document.getElementById('build-disease').value.trim();
+        if (!disease) return;
+        const btn = document.getElementById('build-rag-btn');
+        btn.disabled = true; btn.textContent = 'Building RAG...';
+        document.getElementById('build-results').innerHTML = '<div class="loading"><div class="spinner"></div>Building RAG index with FAISS embeddings...</div>';
+
+        try {
+            const res = await fetch('/rag-ready/build-graph', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: disease, max_results: 5 })
+            });
+            const data = await res.json();
+
+            const chunks = data.chunks_by_source || {};
+            document.getElementById('build-results').innerHTML = `
+                <div class="result-card">
+                    <h3>RAG Index Built</h3>
+                    <div class="stat-row"><span>Total Chunks</span><span class="stat-val">${data.total_chunks || 0}</span></div>
+                    ${Object.entries(chunks).map(([src, cnt]) =>
+                        `<div class="stat-row"><span>${src}</span><span class="stat-val">${cnt}</span></div>`
+                    ).join('')}
+                </div>`;
+        } catch (err) {
+            document.getElementById('build-results').innerHTML = `<div class="result-card"><h3>Error</h3><p>${err.message}</p></div>`;
+        }
+        btn.disabled = false; btn.textContent = 'Build RAG Index';
+    }
+
+    // ========== GRAPH VISUALIZATION ==========
+    const TYPE_COLORS = {
+        disease: '#ef4444', drug: '#3b82f6', symptom: '#f59e0b',
+        phenotype: '#8b5cf6', adverse_event: '#ec4899', chemical: '#06b6d4',
+        article: '#10b981', mesh_term: '#6366f1', gene: '#14b8a6'
+    };
+
+    async function loadGraph() {
+        try {
+            const res = await fetch('/knowledge-graph/abstract');
+            const data = await res.json();
+            graphNodes = data.nodes || [];
+            graphEdges = data.edges || [];
+
+            document.getElementById('stat-nodes').textContent = graphNodes.length;
+            document.getElementById('stat-edges').textContent = graphEdges.length;
+
+            if (graphNodes.length > 0) {
+                document.getElementById('graph-legend').style.display = 'block';
+                initSimulation();
+            }
+        } catch {}
+    }
+
+    function initSimulation() {
+        const W = canvas.width, H = canvas.height;
+        const cx = W / 2, cy = H / 2;
+
+        simulation.nodes = graphNodes.map((n, i) => {
+            const angle = (i / graphNodes.length) * Math.PI * 2;
+            const r = Math.min(W, H) * 0.3;
+            return {
+                ...n,
+                x: cx + Math.cos(angle) * r + (Math.random() - 0.5) * 60,
+                y: cy + Math.sin(angle) * r + (Math.random() - 0.5) * 60,
+                vx: 0, vy: 0,
+                radius: getNodeRadius(n)
+            };
+        });
+        simulation.running = true;
+        simulation.ticks = 0;
+        clearHighlights();
+    }
+
+    function getNodeRadius(node) {
+        if (node.type === 'disease') return 16;
+        if (node.type === 'drug') return 12;
+        return 9;
+    }
+
+    function getNodeColor(type) {
+        return TYPE_COLORS[type] || '#6b7280';
+    }
+
+    function simulate() {
+        if (!simulation.running || simulation.nodes.length === 0) return;
+        const nodes = simulation.nodes;
+        const alpha = Math.max(0.001, 0.3 * Math.pow(0.99, simulation.ticks));
+        if (alpha < 0.002) { simulation.running = false; return; }
+
+        const W = canvas.width, H = canvas.height;
+        const cx = W / 2, cy = H / 2;
+
+        for (const n of nodes) {
+            n.vx += (cx - n.x) * 0.001;
+            n.vy += (cy - n.y) * 0.001;
+        }
+
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                let dx = nodes[j].x - nodes[i].x;
+                let dy = nodes[j].y - nodes[i].y;
+                let d = Math.sqrt(dx * dx + dy * dy) || 1;
+                let force = 800 / (d * d);
+                let fx = dx / d * force;
+                let fy = dy / d * force;
+                nodes[i].vx -= fx; nodes[i].vy -= fy;
+                nodes[j].vx += fx; nodes[j].vy += fy;
+            }
+        }
+
+        for (const e of graphEdges) {
+            const si = nodes.findIndex(n => n.id === e.source);
+            const ti = nodes.findIndex(n => n.id === e.target);
+            if (si < 0 || ti < 0) continue;
+            let dx = nodes[ti].x - nodes[si].x;
+            let dy = nodes[ti].y - nodes[si].y;
+            let d = Math.sqrt(dx * dx + dy * dy) || 1;
+            let force = (d - 100) * 0.005;
+            let fx = dx / d * force;
+            let fy = dy / d * force;
+            nodes[si].vx += fx; nodes[si].vy += fy;
+            nodes[ti].vx -= fx; nodes[ti].vy -= fy;
+        }
+
+        for (const n of nodes) {
+            if (n === dragNode) continue;
+            n.vx *= 0.6; n.vy *= 0.6;
+            n.x += n.vx * alpha * 50;
+            n.y += n.vy * alpha * 50;
+            n.x = Math.max(30, Math.min(W - 30, n.x));
+            n.y = Math.max(30, Math.min(H - 30, n.y));
+        }
+
+        simulation.ticks++;
+    }
+
+    // ========== DRAW ==========
+    function drawGraph() {
+        time++;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const nodes = simulation.nodes;
+        const hasHighlights = highlightedNodeIds.size > 0;
+
+        if (nodes.length === 0) {
+            ctx.fillStyle = '#475569';
+            ctx.font = '16px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText('Build a knowledge graph to visualize it here', canvas.width / 2, canvas.height / 2);
+            ctx.font = '12px system-ui';
+            ctx.fillText('Use the "Build Graph" tab on the left', canvas.width / 2, canvas.height / 2 + 24);
+            return;
+        }
+
+        // Draw edges
+        graphEdges.forEach((e, idx) => {
+            const src = nodes.find(n => n.id === e.source);
+            const tgt = nodes.find(n => n.id === e.target);
+            if (!src || !tgt) return;
+
+            const isHighlighted = highlightedEdges.has(idx);
+            const isHoveredEdge = hoveredNode && (hoveredNode.id === e.source || hoveredNode.id === e.target);
+            const isActive = isHighlighted || isHoveredEdge;
+
+            ctx.beginPath();
+            ctx.moveTo(src.x, src.y);
+            ctx.lineTo(tgt.x, tgt.y);
+            if (isHighlighted) {
+                ctx.strokeStyle = '#d4a574';
+                ctx.lineWidth = 2;
+            } else if (isHoveredEdge) {
+                ctx.strokeStyle = '#d4a57488';
+                ctx.lineWidth = 1.5;
+            } else {
+                ctx.strokeStyle = hasHighlights ? '#1e293b' : '#334155';
+                ctx.lineWidth = 1;
+            }
+            ctx.stroke();
+
+            // Edge label on hover or highlight
+            if (isActive) {
+                const mx = (src.x + tgt.x) / 2;
+                const my = (src.y + tgt.y) / 2;
+                ctx.font = '9px system-ui';
+                const tw = ctx.measureText(e.type).width;
+                ctx.fillStyle = '#0f172acc';
+                ctx.beginPath();
+                ctx.roundRect(mx - tw/2 - 4, my - 12, tw + 8, 16, 4);
+                ctx.fill();
+                ctx.fillStyle = isHighlighted ? '#d4a574' : '#94a3b8';
+                ctx.textAlign = 'center';
+                ctx.fillText(e.type, mx, my);
+            }
+        });
+
+        // Draw nodes
+        for (const n of nodes) {
+            const isHovered = hoveredNode && hoveredNode.id === n.id;
+            const isHL = highlightedNodeIds.has(n.id);
+            const dimmed = hasHighlights && !isHL && !isHovered;
+            const r = isHovered ? n.radius + 2 : n.radius;
+            const color = getNodeColor(n.type);
+
+            // Circle
+            ctx.beginPath();
+            ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+            ctx.fillStyle = dimmed ? color + '33' : color;
+            ctx.fill();
+            ctx.strokeStyle = isHovered ? '#f8fafc' : (isHL ? '#f8fafc88' : color + '44');
+            ctx.lineWidth = isHovered ? 2 : 1;
+            ctx.stroke();
+
+            // Label
+            const label = (n.name || n.id).substring(0, 22);
+            ctx.font = `${isHovered ? 'bold 11' : '9'}px system-ui`;
+            ctx.fillStyle = dimmed ? '#475569' : (isHovered || isHL ? '#f8fafc' : '#94a3b8');
+            ctx.textAlign = 'center';
+            ctx.fillText(label, n.x, n.y + r + 14);
+        }
+
+        // Tooltip for hovered node
+        if (hoveredNode) {
+            const n = hoveredNode;
+            const name = (n.name || n.id);
+            ctx.font = 'bold 11px system-ui';
+            const tipW = Math.max(150, ctx.measureText(name).width + 24);
+            const tipH = 44;
+            const tx = Math.min(n.x + 20, canvas.width - tipW - 10);
+            const ty = Math.max(n.y - 30, 10);
+
+            ctx.fillStyle = '#1e293bf0';
+            ctx.beginPath();
+            ctx.roundRect(tx, ty, tipW, tipH, 6);
+            ctx.fill();
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.fillStyle = '#f8fafc';
+            ctx.textAlign = 'left';
+            ctx.fillText(name.substring(0, 30), tx + 8, ty + 18);
+
+            ctx.fillStyle = getNodeColor(n.type);
+            ctx.font = '9px system-ui';
+            ctx.fillText(n.type.toUpperCase(), tx + 8, ty + 34);
+        }
+    }
+
+    function animate() {
+        simulate();
+        drawGraph();
+        requestAnimationFrame(animate);
+    }
+
+    // ========== MOUSE ==========
+    function getNodeAt(x, y) {
+        for (const n of simulation.nodes) {
+            const dx = x - n.x, dy = y - n.y;
+            if (dx * dx + dy * dy < (n.radius + 6) * (n.radius + 6)) return n;
+        }
+        return null;
+    }
+
+    function onMouseMove(e) {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = e.clientX - rect.left;
+        mouse.y = e.clientY - rect.top;
+        if (dragNode) {
+            dragNode.x = mouse.x;
+            dragNode.y = mouse.y;
+        }
+        hoveredNode = getNodeAt(mouse.x, mouse.y);
+        canvas.style.cursor = hoveredNode ? 'grab' : 'default';
+    }
+
+    function onMouseDown(e) {
+        const node = getNodeAt(mouse.x, mouse.y);
+        if (node) {
+            dragNode = node;
+            canvas.style.cursor = 'grabbing';
+            simulation.running = true;
+            simulation.ticks = Math.max(0, simulation.ticks - 50);
+        }
+    }
+
+    function onMouseUp() {
+        dragNode = null;
+        canvas.style.cursor = hoveredNode ? 'grab' : 'default';
+    }
+
+    // Enter key to submit
+    document.getElementById('question').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askQuestion(); }
+    });
+    document.getElementById('build-disease').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); buildGraph(); }
+    });
+    </script>
+</body>
+</html>
